@@ -14,6 +14,13 @@ using System.Windows.Navigation;
 using System.Windows.Shapes;
 using Microsoft.Kinect;
 
+using Emgu.CV;
+using Emgu.CV.Structure;
+using Emgu.CV.CvEnum;
+using Emgu.CV.Util;
+
+
+
 namespace Assignment_1
 {
     /// <summary>
@@ -29,26 +36,29 @@ namespace Assignment_1
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
             KinectSensor = KinectSensor.GetDefault();
-            /*
-            DepthFrameReader depthFrameReader=KinectSensor.DepthFrameSource.OpenReader();
-            depthFrameReader.FrameArrived += DepthFrameReader_FrameArrived;
+
             depthFrameDescription = KinectSensor.DepthFrameSource.FrameDescription;
             depthFrameData = new ushort[depthFrameDescription.LengthInPixels];// each depth pixel carry 13bit <ushort 16bit(2B)
-            */
+            
 
             MultiSourceFrameReader multiSourceFrameReader = KinectSensor.OpenMultiSourceFrameReader(FrameSourceTypes.Depth);
             multiSourceFrameReader.MultiSourceFrameArrived += MultiSourceFrameReader_MultiSourceFrameArrived;
+           // coordinateMapper = KinectSensor.CoordinateMapper;
 
-            MultiSourceFrameReader multi = KinectSensor.OpenMultiSourceFrameReader(FrameSourceTypes.Depth | FrameSourceTypes.Color);
-            viewData = new byte[depthFrameDescription.LengthInPixels * 4];
-            writeableBitmap = new WriteableBitmap(
+            depthBuffer = new byte[depthFrameDescription.LengthInPixels * 4];
+
+            depthBitmap = new WriteableBitmap(
                 depthFrameDescription.Width,
                 depthFrameDescription.Height,
                 96,96,
                 PixelFormats.Bgr32, //each pixel 24bit (3B)+8bit
-                null
-                );
-            KinectView.Source = writeableBitmap; // WriteableBitmap is child of ImageSource
+                null);
+         
+            deltaWidth = depthFrameDescription.Width / gridSize;
+            deltaHeight = depthFrameDescription.Height / gridSize;
+            avgDistZone= new float[gridSize,gridSize];
+
+            //KinectView.Source = colorBitmap; // WriteableBitmap is child of ImageSource
             KinectSensor.Open();
 
             System.Console.WriteLine(depthFrameDescription.Width+" "+depthFrameDescription.Height);
@@ -57,43 +67,110 @@ namespace Assignment_1
 
         private void MultiSourceFrameReader_MultiSourceFrameArrived(object sender, MultiSourceFrameArrivedEventArgs e)
         {
-            using (DepthFrame depthFrame =)
+            MultiSourceFrame multiSourceFrame = e.FrameReference.AcquireFrame();
+
+            using (DepthFrame depthFrame = multiSourceFrame.DepthFrameReference.AcquireFrame())
             {
 
-            }
-        }
-
-        /*
-        private void DepthFrameReader_FrameArrived(object sender, DepthFrameArrivedEventArgs e)
-        {
-            using (DepthFrame depthFrame = e.FrameReference.AcquireFrame())
-            {
                 if (depthFrame == null) { return; }
                 depthFrame.CopyFrameDataToArray(depthFrameData);
-                //write depthFrameData into frameData
+
                 for (int i = 0; i < depthFrameData.Length; i++)
                 {
-                    ushort temp=depthFrameData[i];
-                    viewData[i*4]=(byte)temp;
-                    viewData[i*4+1] = (byte)temp;
-                    viewData[i*4+2] = (byte)temp;
+                    ushort depth = depthFrameData[i];
+
+                    ushort minDepth = depthFrame.DepthMinReliableDistance; // 500 
+                    ushort maxDepth = (ushort)(depthFrame.DepthMaxReliableDistance - 3000); // 4500 
+
+                    // byte depthByte = (byte)((depth - minDepth) * 255.0 / (maxDepth - minDepth));
+                    //depthByte = (byte)(255 - depthByte);
+                    byte depthByte = (byte)(255 - map(depth, minDepth, maxDepth, 0, 255));
+                    depthBuffer[i * 4] = depthByte;
+                    depthBuffer[i * 4 + 1] = depthByte;
+                    depthBuffer[i * 4 + 2] = depthByte;
                 }
 
-                //show data to kinectView
-                writeableBitmap.WritePixels(
-                    new Int32Rect(0, 0, depthFrameDescription.Width, depthFrameDescription.Height),
-                    viewData,
-                    depthFrameDescription.Width * 4,
-                    0
-                );
+            }
+                depthBitmap.WritePixels(
+                     new Int32Rect(0, 0, depthFrameDescription.Width, depthFrameDescription.Height),
+                     depthBuffer,
+                     depthFrameDescription.Width * 4,
+                     0
+                    );
+            
+
+               BitmapSource bitmapSource = depthBitmap;
+                System.Drawing.Bitmap bitmap = BitmapConvertion.ToBitmap(bitmapSource);
+                Image<Bgr, byte> DepthImg = bitmap.ToImage<Bgr, byte>();
+                //Image<Bgr, byte> openCVImg = bitmap.ToImage<Bgr, byte>();
+                Image<Bgr, byte> openCVImg=DepthImg.CopyBlank();
+                // Image<Bgr, byte> openCVImg = DepthImg.Copy();
+
+                // cal avg dist
+
+                for (int row = 0; row < gridSize; row++)
+                {
+                    for(int col = 0; col < gridSize; col++)
+                    {
+                        //openCVImg.Data[(row * deltaHeight)+deltaHeight/2 ,(col* deltaWidth)+deltaWidth/2 ,1]=255;
+                        avgDistZone[row,col] = (DepthImg.Data[(row * deltaHeight) + deltaHeight / 2, (col * deltaWidth) + deltaWidth / 2, 0]+ DepthImg.Data[(row * deltaHeight) + deltaHeight / 2, (col * deltaWidth) + deltaWidth / 2, 1]+ DepthImg.Data[(row * deltaHeight) + deltaHeight / 2, (col * deltaWidth) + deltaWidth / 2, 2])/3;
+                    }
+                }
+               // System.Console.WriteLine(depthFrame.DepthMinReliableDistance+" "+ depthFrame.DepthMaxReliableDistance);
+                //Print2DArray<float>(avgDistZone);
+      
+                //
+                for (int rows = 0; rows < gridSize; rows++)
+                {
+                    for(int cols = 0;cols< gridSize; cols++)
+                    {
+                        float dist=avgDistZone[rows, cols];
+                        float val =dist;
+                        System.Drawing.PointF rectPos=new System.Drawing.PointF((cols * deltaWidth) + deltaWidth / 2, (rows * deltaHeight)+deltaHeight / 2);
+                        System.Drawing.SizeF rectSize = new System.Drawing.SizeF((float)(deltaWidth - deltaWidth * (1-map(dist,0,255,0,0.95f))), (float)(deltaHeight - deltaHeight * (1-map(dist, 0, 255, 0, 0.95f))));
+                        RotatedRect rect = new RotatedRect(rectPos, rectSize, 0);
+                        openCVImg.Draw(rect, new Bgr(val, val, val), -1);
+                    }
+                }
+
+                bitmap=openCVImg.ToBitmap<Bgr, byte>();
+                wpfView.Source = BitmapConvertion.ToBitmapSource(bitmap);
+            
+        }
+
+
+        public static void Print2DArray<T>(T[,] matrix)
+        {
+            for (int i = 0; i < matrix.GetLength(0); i++)
+            {
+                for (int j = 0; j < matrix.GetLength(1); j++)
+                {
+                    Console.Write(matrix[i, j] + "\t");
+                }
+                Console.WriteLine();
             }
         }
-        */
+
+        public static float map(float val, float min, float max, float targetMin, float targetMax)
+        {
+            if (val < min) { val = min; }
+            if(val > max) { val = max; }
+            float range=max-min;
+            float weight = (val-min) / range;
+            return ((targetMax - targetMin) * weight + targetMin);
+
+        }
+
 
         private KinectSensor KinectSensor;
         private FrameDescription depthFrameDescription;
         private ushort[] depthFrameData;
-        private WriteableBitmap writeableBitmap=null;
-        private byte[] viewData=null;
+        private WriteableBitmap depthBitmap=null;
+        private byte[] depthBuffer=null;
+
+        int gridSize =10;
+        int deltaWidth = 0;
+        int deltaHeight = 0;
+        float[,] avgDistZone;
     }    
 }

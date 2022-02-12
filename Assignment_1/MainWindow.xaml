@@ -15,7 +15,7 @@
             <ColumnDefinition Width="905*"/>
             <ColumnDefinition Width="163*"/>
         </Grid.ColumnDefinitions>
-        <Image x:Name="KinectView" HorizontalAlignment="Left" Margin="10,13,0,0" VerticalAlignment="Top" />
+        <Image x:Name="wpfView" HorizontalAlignment="Left" Margin="10,13,0,0" VerticalAlignment="Top" />
 
 
     </Grid>
