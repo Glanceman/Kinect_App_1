@@ -28,6 +28,26 @@ namespace Assignment_1
     /// </summary>
     public partial class MainWindow : Window
     {
+
+
+        private KinectSensor KinectSensor;
+        private FrameDescription depthFrameDescription;
+        private ushort[] depthFrameData;
+        private WriteableBitmap depthBitmap = null;
+        private byte[] depthBuffer = null;
+
+
+
+        int gridSize = 8; //fixed
+        int deltaWidth = 0;
+        int deltaHeight = 0;
+        float[,] avgDistZone;
+        private int[,] currentPatternState = null;
+        private GridPattern gridPattern = new GridPattern();
+        int[,] pattern = null;
+        private bool isGameStart = false;
+        private bool isMatched = true;
+        private Random random = new Random();
         public MainWindow()
         {
             InitializeComponent();
@@ -39,29 +59,30 @@ namespace Assignment_1
 
             depthFrameDescription = KinectSensor.DepthFrameSource.FrameDescription;
             depthFrameData = new ushort[depthFrameDescription.LengthInPixels];// each depth pixel carry 13bit <ushort 16bit(2B)
-            
+
 
             MultiSourceFrameReader multiSourceFrameReader = KinectSensor.OpenMultiSourceFrameReader(FrameSourceTypes.Depth);
             multiSourceFrameReader.MultiSourceFrameArrived += MultiSourceFrameReader_MultiSourceFrameArrived;
-           // coordinateMapper = KinectSensor.CoordinateMapper;
+            // coordinateMapper = KinectSensor.CoordinateMapper;
 
             depthBuffer = new byte[depthFrameDescription.LengthInPixels * 4];
 
             depthBitmap = new WriteableBitmap(
                 depthFrameDescription.Width,
                 depthFrameDescription.Height,
-                96,96,
+                96, 96,
                 PixelFormats.Bgr32, //each pixel 24bit (3B)+8bit
                 null);
-         
+
             deltaWidth = depthFrameDescription.Width / gridSize;
             deltaHeight = depthFrameDescription.Height / gridSize;
-            avgDistZone= new float[gridSize,gridSize];
+            avgDistZone = new float[gridSize, gridSize];
+            currentPatternState = new int[gridSize, gridSize];
 
             //KinectView.Source = colorBitmap; // WriteableBitmap is child of ImageSource
             KinectSensor.Open();
 
-            System.Console.WriteLine(depthFrameDescription.Width+" "+depthFrameDescription.Height);
+            System.Console.WriteLine(depthFrameDescription.Width + " " + depthFrameDescription.Height);
 
         }
 
@@ -82,8 +103,7 @@ namespace Assignment_1
                     ushort minDepth = depthFrame.DepthMinReliableDistance; // 500 
                     ushort maxDepth = (ushort)(depthFrame.DepthMaxReliableDistance - 3000); // 4500 
 
-                    // byte depthByte = (byte)((depth - minDepth) * 255.0 / (maxDepth - minDepth));
-                    //depthByte = (byte)(255 - depthByte);
+
                     byte depthByte = (byte)(255 - map(depth, minDepth, maxDepth, 0, 255));
                     depthBuffer[i * 4] = depthByte;
                     depthBuffer[i * 4 + 1] = depthByte;
@@ -91,51 +111,89 @@ namespace Assignment_1
                 }
 
             }
-                depthBitmap.WritePixels(
-                     new Int32Rect(0, 0, depthFrameDescription.Width, depthFrameDescription.Height),
-                     depthBuffer,
-                     depthFrameDescription.Width * 4,
-                     0
-                    );
-            
+            depthBitmap.WritePixels(
+                 new Int32Rect(0, 0, depthFrameDescription.Width, depthFrameDescription.Height),
+                 depthBuffer,
+                 depthFrameDescription.Width * 4,
+                 0
+                );
 
-               BitmapSource bitmapSource = depthBitmap;
-                System.Drawing.Bitmap bitmap = BitmapConvertion.ToBitmap(bitmapSource);
-                Image<Bgr, byte> DepthImg = bitmap.ToImage<Bgr, byte>();
-                //Image<Bgr, byte> openCVImg = bitmap.ToImage<Bgr, byte>();
-                Image<Bgr, byte> openCVImg=DepthImg.CopyBlank();
-                // Image<Bgr, byte> openCVImg = DepthImg.Copy();
 
-                // cal avg dist
+            BitmapSource bitmapSource = depthBitmap;
+            System.Drawing.Bitmap bitmap = BitmapConvertion.ToBitmap(bitmapSource);
+            Image<Bgr, byte> DepthImg = bitmap.ToImage<Bgr, byte>();
+            //Image<Bgr, byte> openCVImg = bitmap.ToImage<Bgr, byte>();
+            Image<Bgr, byte> openCVImg = DepthImg.CopyBlank();
+            // Image<Bgr, byte> openCVImg = DepthImg.Copy();
 
-                for (int row = 0; row < gridSize; row++)
+            // cal avg dist
+
+            for (int row = 0; row < gridSize; row++)
+            {
+                for (int col = 0; col < gridSize; col++)
                 {
-                    for(int col = 0; col < gridSize; col++)
-                    {
-                        //openCVImg.Data[(row * deltaHeight)+deltaHeight/2 ,(col* deltaWidth)+deltaWidth/2 ,1]=255;
-                        avgDistZone[row,col] = (DepthImg.Data[(row * deltaHeight) + deltaHeight / 2, (col * deltaWidth) + deltaWidth / 2, 0]+ DepthImg.Data[(row * deltaHeight) + deltaHeight / 2, (col * deltaWidth) + deltaWidth / 2, 1]+ DepthImg.Data[(row * deltaHeight) + deltaHeight / 2, (col * deltaWidth) + deltaWidth / 2, 2])/3;
-                    }
+                    //openCVImg.Data[(row * deltaHeight)+deltaHeight/2 ,(col* deltaWidth)+deltaWidth/2 ,1]=255;
+                    avgDistZone[row, col] = (DepthImg.Data[(row * deltaHeight) + deltaHeight / 2, (col * deltaWidth) + deltaWidth / 2, 0] + DepthImg.Data[(row * deltaHeight) + deltaHeight / 2, (col * deltaWidth) + deltaWidth / 2, 1] + DepthImg.Data[(row * deltaHeight) + deltaHeight / 2, (col * deltaWidth) + deltaWidth / 2, 2]) / 3;
                 }
-               // System.Console.WriteLine(depthFrame.DepthMinReliableDistance+" "+ depthFrame.DepthMaxReliableDistance);
-                //Print2DArray<float>(avgDistZone);
-      
-                //
-                for (int rows = 0; rows < gridSize; rows++)
+            }
+            // System.Console.WriteLine(depthFrame.DepthMinReliableDistance+" "+ depthFrame.DepthMaxReliableDistance);
+            //Print2DArray<float>(avgDistZone);
+            if (isGameStart)
+            {
+                // random pick a pattern 
+                if (isMatched == true)
                 {
-                    for(int cols = 0;cols< gridSize; cols++)
-                    {
-                        float dist=avgDistZone[rows, cols];
-                        float val =dist;
-                        System.Drawing.PointF rectPos=new System.Drawing.PointF((cols * deltaWidth) + deltaWidth / 2, (rows * deltaHeight)+deltaHeight / 2);
-                        System.Drawing.SizeF rectSize = new System.Drawing.SizeF((float)(deltaWidth - deltaWidth * (1-map(dist,0,255,0,0.95f))), (float)(deltaHeight - deltaHeight * (1-map(dist, 0, 255, 0, 0.95f))));
-                        RotatedRect rect = new RotatedRect(rectPos, rectSize, 0);
-                        openCVImg.Draw(rect, new Bgr(val, val, val), -1);
-                    }
+                    int seed = random.Next(gridPattern.getNumberofPatterns());
+                    System.Console.WriteLine(seed);
+                    pattern = gridPattern.getPattern(seed);
+                    isMatched = false;  
                 }
+            }
+            //if (pattern != null) { Print2DArray<int>(pattern); }
+            //
+            for (int rows = 0; rows < gridSize; rows++)
+            {
+                for (int cols = 0; cols < gridSize; cols++)
+                {
+                    float dist = avgDistZone[rows, cols];
+                    float val = dist;
+                    System.Drawing.PointF rectPos = new System.Drawing.PointF((cols * deltaWidth) + deltaWidth / 2, (rows * deltaHeight) + deltaHeight / 2);
+                    System.Drawing.SizeF rectSize = new System.Drawing.SizeF((float)(deltaWidth - deltaWidth * (1 - map(dist, 0, 255, 0, 0.95f))), (float)(deltaHeight - deltaHeight * (1 - map(dist, 0, 255, 0, 0.95f))));
+                    Bgr color = new Bgr(val, val, val);
+                    //mark the curruent State
+                    if (dist < 150)
+                    {
+                        if (pattern != null && pattern[rows, cols] == 1) //show the pattern
+                        {
+                            color.Blue = 0;
+                            color.Green = 0;
+                            color.Red = 255;
+                            rectSize.Width = (float)(deltaWidth * 0.5);
+                            rectSize.Height = (float)(deltaWidth * 0.5);
+                        }
+                    }
+                    else
+                    {
+                        currentPatternState[rows, cols] = 1;
+                    }
 
-                bitmap=openCVImg.ToBitmap<Bgr, byte>();
-                wpfView.Source = BitmapConvertion.ToBitmapSource(bitmap);
-            
+                    RotatedRect rect = new RotatedRect(rectPos, rectSize, 0);
+                    openCVImg.Draw(rect, color, -1);
+                }
+            }
+            bool temp = isOverlappedTo(currentPatternState, pattern);
+            if (temp == true)
+            {
+                isMatched = true; //mark the current pattern is matched
+            }
+           // Print2DArray<int>(currentPatternState);
+            //reset currentState
+            Array.Clear(currentPatternState, 0, currentPatternState.Length);
+
+            System.Console.WriteLine(temp);
+            bitmap = openCVImg.ToBitmap<Bgr, byte>();
+            wpfView.Source = BitmapConvertion.ToBitmapSource(bitmap);
+
         }
 
 
@@ -151,26 +209,71 @@ namespace Assignment_1
             }
         }
 
+        public static bool isOverlappedTo(int[,] matrix, int[,] ref_Matrix)
+        {
+            if(matrix == null || ref_Matrix == null) { return false; }
+            if (matrix.GetLength(0) != ref_Matrix.GetLength(0))
+            {
+                return false;
+            }
+            else if (matrix.GetLength(1) != ref_Matrix.GetLength(1))
+            {
+                return false;
+            }
+
+            for (int i = 0; i < ref_Matrix.GetLength(0); i++)
+            {
+                for (int j = 0; j < ref_Matrix.GetLength(1); j++)
+                {
+                    if (ref_Matrix[i, j] != 0)
+                    {
+                        if (matrix[i, j] != ref_Matrix[i, j]) { return false; }
+                    }
+                }
+            }
+
+            return true;
+        }
+        public static bool compare2DArray<T>(T[,] matrix, T[,] matrix2)
+        {
+            if (matrix.GetLength(0) != matrix2.GetLength(0))
+            {
+                return false;
+            }
+            else if (matrix.GetLength(1) != matrix2.GetLength(1))
+            {
+                return false;
+            }
+
+            for (int i = 0; i < matrix.GetLength(0); i++)
+            {
+                for (int j = 0; j < matrix.GetLength(1); j++)
+                {
+                    if (!EqualityComparer<T>.Default.Equals(matrix[i, j], matrix2[i, j]))
+                    {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
         public static float map(float val, float min, float max, float targetMin, float targetMax)
         {
             if (val < min) { val = min; }
-            if(val > max) { val = max; }
-            float range=max-min;
-            float weight = (val-min) / range;
+            if (val > max) { val = max; }
+            float range = max - min;
+            float weight = (val - min) / range;
             return ((targetMax - targetMin) * weight + targetMin);
 
         }
 
-
-        private KinectSensor KinectSensor;
-        private FrameDescription depthFrameDescription;
-        private ushort[] depthFrameData;
-        private WriteableBitmap depthBitmap=null;
-        private byte[] depthBuffer=null;
-
-        int gridSize =10;
-        int deltaWidth = 0;
-        int deltaHeight = 0;
-        float[,] avgDistZone;
-    }    
+        private void btn_Play_Click(object sender, RoutedEventArgs e)
+        {
+            if (isGameStart == false)
+            {
+                isGameStart = true;
+            }
+        }
+    }
 }
