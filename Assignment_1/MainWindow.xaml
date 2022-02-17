@@ -16,7 +16,11 @@
             <ColumnDefinition Width="3*"/>
         </Grid.ColumnDefinitions>
         <Image x:Name="wpfView" HorizontalAlignment="Left" Margin="10,13,0,0" VerticalAlignment="Top" Height="auto" Width="auto" />
-        <Button x:Name="btn_Play" Grid.Column="1" Content="play" HorizontalAlignment="Center" Margin="0,45,0,0" VerticalAlignment="Top" Click="btn_Play_Click" Height="19" Width="54"/>
+        <Button x:Name="btn_Play" Grid.Column="1" Content="play" HorizontalAlignment="Left" Margin="26,161,0,0" VerticalAlignment="Top" Click="btn_Play_Click" Height="19" Width="54"/>
+        <TextBlock x:Name="TxtBlock_PlayLoops" Grid.Column="1" HorizontalAlignment="Center" Margin="0,126,0,0" TextWrapping="Wrap" Text="Number of Loops" VerticalAlignment="Top"/>
+        <TextBox x:Name="Txt_PlayLoops" Grid.Column="1" HorizontalAlignment="Center" Margin="0,141,0,0" TextWrapping="Wrap" Text="3" VerticalAlignment="Top" Width="98" Height="15"/>
+        <Label x:Name="Label_TimeTaken" Grid.Column="1" Content="0" HorizontalAlignment="Left" Margin="22,225,0,0" VerticalAlignment="Top"/>
+        <Label x:Name="Label_Result" Grid.Column="1" Content="Total Time Taken" HorizontalAlignment="Center" Margin="0,195,0,0" VerticalAlignment="Top"/>
 
 
     </Grid>

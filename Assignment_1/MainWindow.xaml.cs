@@ -48,6 +48,11 @@ namespace Assignment_1
         private bool isGameStart = false;
         private bool isMatched = true;
         private Random random = new Random();
+        private int currentCount = 0;
+        private int playCount = 0;
+        private int seed = 0;
+        private bool isWaiting = false;
+        private System.Diagnostics.Stopwatch stopwatch = new System.Diagnostics.Stopwatch();
         public MainWindow()
         {
             InitializeComponent();
@@ -63,7 +68,7 @@ namespace Assignment_1
 
             MultiSourceFrameReader multiSourceFrameReader = KinectSensor.OpenMultiSourceFrameReader(FrameSourceTypes.Depth);
             multiSourceFrameReader.MultiSourceFrameArrived += MultiSourceFrameReader_MultiSourceFrameArrived;
-            // coordinateMapper = KinectSensor.CoordinateMapper;
+
 
             depthBuffer = new byte[depthFrameDescription.LengthInPixels * 4];
 
@@ -122,9 +127,8 @@ namespace Assignment_1
             BitmapSource bitmapSource = depthBitmap;
             System.Drawing.Bitmap bitmap = BitmapConvertion.ToBitmap(bitmapSource);
             Image<Bgr, byte> DepthImg = bitmap.ToImage<Bgr, byte>();
-            //Image<Bgr, byte> openCVImg = bitmap.ToImage<Bgr, byte>();
             Image<Bgr, byte> openCVImg = DepthImg.CopyBlank();
-            // Image<Bgr, byte> openCVImg = DepthImg.Copy();
+
 
             // cal avg dist
 
@@ -143,8 +147,12 @@ namespace Assignment_1
                 // random pick a pattern 
                 if (isMatched == true)
                 {
-                    int seed = random.Next(gridPattern.getNumberofPatterns());
-                    System.Console.WriteLine(seed);
+                    int randInt = random.Next(gridPattern.getNumberofPatterns());
+                    while (randInt == seed)
+                    {
+                        randInt = random.Next(gridPattern.getNumberofPatterns());
+                    };
+                    seed = randInt;
                     pattern = gridPattern.getPattern(seed);
                     isMatched = false;  
                 }
@@ -161,7 +169,7 @@ namespace Assignment_1
                     System.Drawing.SizeF rectSize = new System.Drawing.SizeF((float)(deltaWidth - deltaWidth * (1 - map(dist, 0, 255, 0, 0.95f))), (float)(deltaHeight - deltaHeight * (1 - map(dist, 0, 255, 0, 0.95f))));
                     Bgr color = new Bgr(val, val, val);
                     //mark the curruent State
-                    if (dist < 150)
+                    if (dist < 180)
                     {
                         if (pattern != null && pattern[rows, cols] == 1) //show the pattern
                         {
@@ -174,6 +182,12 @@ namespace Assignment_1
                     }
                     else
                     {
+                        if(pattern != null && pattern[rows, cols] == 1)
+                        {
+                            color.Blue = 0;
+                            color.Green = 255;
+                            color.Red = 0;
+                        }
                         currentPatternState[rows, cols] = 1;
                     }
 
@@ -181,16 +195,44 @@ namespace Assignment_1
                     openCVImg.Draw(rect, color, -1);
                 }
             }
-            bool temp = isOverlappedTo(currentPatternState, pattern);
-            if (temp == true)
-            {
-                isMatched = true; //mark the current pattern is matched
-            }
-           // Print2DArray<int>(currentPatternState);
+            bool isPatternMatched = isOverlappedTo(currentPatternState, pattern);
+            
+            //System.Console.WriteLine("current:"+currentCount);
             //reset currentState
             Array.Clear(currentPatternState, 0, currentPatternState.Length);
+            if (isPatternMatched == true)
+            {
+                //set wait time
+                if (isWaiting == false)
+                {
+                    isWaiting = true;
+                    pattern = null; //clear pattern
+                    System.Timers.Timer timer = new System.Timers.Timer(1000);
+                    timer.Elapsed += (source, eve) =>
+                    {
+                        timer.Dispose();
+                        System.Console.WriteLine("Timer");
+                        isWaiting = false;  
+                        isMatched = true; //mark the current pattern is matched
+                        currentCount=currentCount+1;
+                    };
+                    timer.Start();
+                }
+            }
 
-            System.Console.WriteLine(temp);
+            if (currentCount == playCount) // when player finish, set game to stop and reset count
+            {
+                isGameStart = false;
+                isMatched=true;
+                currentCount = 0;
+                pattern = null; //clear pattern
+                                //output the record time
+                stopwatch.Stop();
+                Label_TimeTaken.Content = (stopwatch.ElapsedMilliseconds / 1000).ToString()+"s";
+                
+            }
+            // System.Console.WriteLine(temp);
+            //update frame
             bitmap = openCVImg.ToBitmap<Bgr, byte>();
             wpfView.Source = BitmapConvertion.ToBitmapSource(bitmap);
 
@@ -272,6 +314,16 @@ namespace Assignment_1
         {
             if (isGameStart == false)
             {
+                if(int.TryParse(Txt_PlayLoops.Text, out int temp))
+                {
+                    playCount=temp;
+                }
+                else
+                {
+                    MessageBox.Show("Error", "please enter a number");
+                    return;
+                }
+                stopwatch.Start();
                 isGameStart = true;
             }
         }
