@@ -52,6 +52,7 @@ namespace Assignment_1
         private int playCount = 0;
         private int seed = 0;
         private bool isWaiting = false;
+        private bool change = false;
         private System.Diagnostics.Stopwatch stopwatch = new System.Diagnostics.Stopwatch();
         public MainWindow()
         {
@@ -122,7 +123,7 @@ namespace Assignment_1
                  depthFrameDescription.Width * 4,
                  0
                 );
-
+           
 
             BitmapSource bitmapSource = depthBitmap;
             System.Drawing.Bitmap bitmap = BitmapConvertion.ToBitmap(bitmapSource);
@@ -200,24 +201,29 @@ namespace Assignment_1
             //System.Console.WriteLine("current:"+currentCount);
             //reset currentState
             Array.Clear(currentPatternState, 0, currentPatternState.Length);
-            if (isPatternMatched == true)
+            if (isPatternMatched == true) //matched pattern
             {
                 //set wait time
                 if (isWaiting == false)
                 {
                     isWaiting = true;
                     pattern = null; //clear pattern
-                    System.Timers.Timer timer = new System.Timers.Timer(1000);
+                    System.Timers.Timer timer = new System.Timers.Timer(1000); //set timer
                     timer.Elapsed += (source, eve) =>
                     {
                         timer.Dispose();
                         System.Console.WriteLine("Timer");
-                        isWaiting = false;  
-                        isMatched = true; //mark the current pattern is matched
-                        currentCount=currentCount+1;
+                        isWaiting = false;
+                        change = true;
                     };
                     timer.Start();
                 }
+            }
+            if (change)
+            {
+                isMatched = true; //mark the current pattern is matched
+                currentCount = currentCount + 1;
+                change = false;
             }
 
             if (currentCount == playCount) // when player finish, set game to stop and reset count
@@ -229,6 +235,7 @@ namespace Assignment_1
                                 //output the record time
                 stopwatch.Stop();
                 Label_TimeTaken.Content = (stopwatch.ElapsedMilliseconds / 1000).ToString()+"s";
+                stopwatch.Reset();
                 
             }
             // System.Console.WriteLine(temp);
